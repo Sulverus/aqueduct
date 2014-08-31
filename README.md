@@ -18,6 +18,8 @@ the changed data. Anybody who need to receive the data, subscribes to the approp
 In case of unavailability of recipient, message server can deliver unsent messages when
 the recipient becomes  available.
 
+![scheme](https://raw.github.com/Sulverus/aqueduct/master/aqueduct/static/img/scheme.png "scheme")
+
 A more detailed description and documentation will be available soon
 
 
