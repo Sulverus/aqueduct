@@ -36,7 +36,7 @@ Planned
 --------------------
 Ordering by priority:
 
-* Reddis support
+* Redis support
 * Configuration by http
 * Configuration in web interface
 * Memcached support
