@@ -1,6 +1,6 @@
 #encoding: utf8
 from tornado.web import HTTPError, RequestHandler
-from tornado import gen
+from tornado import gen, ioloop
 from aqueduct.log import logger
 import json
 
@@ -10,6 +10,7 @@ class Listener(RequestHandler):
         super(Listener, self).__init__(*args, **kwargs)
         self.set_header('Content-Type', 'application/json; charset="utf-8"')
 
+    @gen.coroutine
     def broadcast(self, channel, data):
         """
         Function to send data to the services:
@@ -22,8 +23,9 @@ class Listener(RequestHandler):
             if self.application.storage.messages_in_channel(client, channel):
                 self.application.storage.push(client, channel, data, None)
                 continue
+
             # Else send a message
-            status_code = self.application.transport(client, key, data)
+            status_code = yield self.application.transport(client, key, data)
             if status_code == 200:
                 continue
 
@@ -31,7 +33,7 @@ class Listener(RequestHandler):
             logger.error('[%s] Transport failed for service %s' % (channel, client))
             self.application.storage.push(client, channel, data, status_code)
 
-    @gen.coroutine
+    @gen.engine
     def post(self):
         """
         Get the data from the client and send it out. Give response about getting
@@ -56,7 +58,7 @@ class Listener(RequestHandler):
             raise HTTPError(400, 'No data specified')
 
         # send out data
-        self.application.executor.submit(self.broadcast, channel, data)
+        ioloop.IOLoop.instance().add_callback(self.broadcast, channel, data)
         logger.info(
             '[%s] New message from %s' % (channel, self.request.remote_ip)
         )

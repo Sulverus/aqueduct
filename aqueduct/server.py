@@ -5,17 +5,18 @@ import tornado.web
 import os.path
 import json
 from tornado.options import define, options
-from futures import ThreadPoolExecutor
 from aqueduct.listener import Listener
 from aqueduct.storages.basic import MemoryStorage
-from aqueduct.transport.http import send
+from tornado import httpclient
 from aqueduct.log import logger
+from tornado.httpclient import HTTPError as HTTPClientError
+from socket import error as socket_error
+from tornado import gen
 
 SECOND = 1000
 MINUTE = SECOND * 60
 
 define("port", default=8888, help="Run service on this port", type=int)
-define("max_workers", default=2, help="Max chanel workers", type=int)
 define("interval", default=5 * MINUTE, help="Queue check interval", type=int)
 define("config", default='../conf/config.json', help="Configuration file", type=str)
 
@@ -36,8 +37,6 @@ class Application(tornado.web.Application):
         self.config = json.load(config_file)
 
         self.storage = self.get_storage()
-        self.executor = ThreadPoolExecutor(max_workers=options.max_workers)
-
         self.waiting_check = False
 
     def get_storage(self):
@@ -54,19 +53,34 @@ class Application(tornado.web.Application):
         return obj(self.config)
 
     @staticmethod
+    @gen.coroutine
     def transport(client, key, data):
         """
-        The general method of data transfer over http protocol
+        The general method of async data transfer over http protocol
         """
-        return send('%s?api_key=%s' % (client, key), data)
+        http_client = httpclient.AsyncHTTPClient()
+        try:
+            response = yield http_client.fetch(
+                '%s?api_key=%s' % (client, key),
+                method='POST', body=json.dumps(data)
+            )
+            status_code = response.code
+        except HTTPClientError, e:
+            status_code = e.code
+        except socket_error:
+            status_code = -1
+        http_client.close()
+        raise gen.Return(status_code)
 
+    @gen.coroutine
     def process_channel(self, client, channel, messages):
         """
         Send lost messages to the client in a given channel
         """
         api_key = self.storage.get_client_key(client, channel)
         for i, message in enumerate(messages):
-            if self.transport(client, api_key, message[0]) != 200:
+            status_code = yield self.transport(client, api_key, message[0])
+            if status_code != 200:
                 break
             self.storage.drop_message(client, channel, i)
 
