@@ -25,10 +25,9 @@ class MemoryStorage(object):
         """
         channel_dict = self.config.get('channels', {})
         for channel in channel_dict:
-            if channel not in self.clients:
-                self.clients[channel] = []
-            for user_data in channel_dict[channel]:
-                self.clients[channel].append((user_data['url'], user_data['key']))
+            self.add_channel(channel)
+            for user_data in channel_dict.get(channel, []):
+                self.subscribe(user_data['url'], user_data['key'], channel)
 
     def load_api_keys(self):
         """
@@ -102,3 +101,49 @@ class MemoryStorage(object):
         In print we trust
         """
         return repr(self.storage)
+
+    def add_channel(self, channel):
+        """
+        Try to create a channel in the storage
+        """
+        if channel in self.clients:
+            return False
+        self.clients[channel] = []
+        return True
+
+    def subscribe(self, client, api_key, channel):
+        """
+        Subscribe client to the channel
+        """
+        if channel not in self.clients:
+            return False
+        pair = (client, api_key)
+        if pair in self.clients[channel]:
+            return False
+
+        self.clients[channel].append(pair)
+        return True
+
+    def unsubscribe(self, client, channel):
+        """
+        Unsubscribe client from the channel
+        N.B. we must drop all messages in queue for this client
+        """
+        clients = self.clients.get(channel)
+        if clients is None:
+            return False
+        index = None
+        for i, pair in enumerate(clients):
+            if pair[0] != client:
+                continue
+            index = i
+            break
+        if index is not None:
+            del self.clients[channel][index]
+        return True
+
+    def drop_channel(self, channel):
+        """
+        Drop channel with all messages and clients
+        """
+        return self.clients.pop(channel, None)
